@@ -1,0 +1,17 @@
+[
+    {
+        "nombre": "Carlos Andrés",
+        "apellidos": "Gutierrez Medina",
+        "edad": 27
+    },
+    {
+        "nombre": "Maria Cristina",
+        "apellidos": "Marín Ortiz",
+        "edad": 31
+    },
+    {
+        "nombre": "Nancy Cecilia",
+        "apellidos": "Cortes Ramos",
+        "edad": 36
+    }
+]
