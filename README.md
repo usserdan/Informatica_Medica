@@ -1,1 +1,1 @@
-# Informatica_Medica
+# Repositorio del curso de Informática Médica
