@@ -20,7 +20,10 @@ def main():
             
             if opcion == 1:
                 while True:
-                    id = input("\nIngrese el ID del paciente: \n")
+                    id = input("\nIngrese el ID del paciente (o escriba 'm' para volver al menú principal): \n")
+                    if id.lower() == 'm':
+                        print("\nRegresando al menú principal...\n")
+                        break
                     patient = search_patient(id)
                     
                     if not patient:
@@ -30,7 +33,10 @@ def main():
             
             elif opcion == 2: # actualizar informacion del paciente
                 while True:
-                    id = input('Ingrese el ID del paciente a actualizar: ')
+                    id = input("Ingrese el ID del paciente a actualizar (o escriba 'm' para volver al menú principal): ")
+                    if id.lower() == 'm':
+                        print("\nRegresando al menú principal...\n")
+                        break
                     if update_patient(id):
                         break
                     else:
@@ -38,7 +44,10 @@ def main():
             
             elif opcion == 3:
                 while True:
-                    id = input('Ingrese el ID del paciente a eliminar: ')
+                    id = input("\nIngrese el ID del paciente a eliminar (o escriba 'm' para volver al menú principal): ")
+                    if id.lower() == 'm':
+                        print("\nRegresando al menú principal...\n")
+                        break
                     if delete_patient(id):
                         break
                     else:

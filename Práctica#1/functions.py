@@ -1,6 +1,8 @@
 import os
 import json
 import csv
+import hl7
+from datetime import datetime
 from pymongo import MongoClient
 
 # se inserta el string de conexion con el cluster
@@ -89,11 +91,90 @@ def insert_patients(db):
             else:
                 print(f"Paciente {documento['id']} ya existe en la base de datos")   
 
+# funcion para crear el archivo hl7
+def hl7_file(data):
+    # 1) Fecha/hora actual
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    # 2) MSH
+    msh = f"MSH|^~\\&|{data.get('device','')}||{data.get('ips','')}||{ts}||ORU^R01|00001|P|2.5\r"
+    
+    # 3) PID: nombre y apellido pueden venir como Plastname/Pname o lastname/name
+    apellido = data.get('Plastname') or data.get('lastname','')
+    nombre   = data.get('Pname')     or data.get('name','')
+    pid = f"PID|1|{data.get('id','')}|||{apellido}^{nombre}||{data.get('age','')}|{data.get('gender','')}\r"
+    
+    # 4) PV1: médico separado en prefijo^nombre^apellido
+    admission = data.get('admission','')
+    doc = data.get('physician','').strip()
+    if doc:
+        parts = doc.split()
+        prefix = parts[0] if len(parts)>1 else ''
+        lastname = parts[-1] if len(parts)>1 else ''
+        firstname = " ".join(parts[1:-1]) if len(parts)>2 else (parts[1] if len(parts)>1 else '')
+        doctor_field = f"{lastname}^{firstname}^{prefix}"
+    else:
+        doctor_field = ""
+    specialty = data.get('specialty', data.get('speciality',''))
+    pv1 = f"PV1|1|{admission}|||||{doctor_field}|{specialty}\r"
+    
+    segments = [msh, pid, pv1]
+    
+    # 5) Tests = lista de (test_name, valor)
+    if isinstance(data.get('test'), dict):
+        tests = data['test'].items()
+    elif isinstance(data.get('tests'), dict):
+        tests = data['tests'].items()
+    else:
+        # cualquier clave que empiece por 'test_'
+        tests = ((k, data[k]) for k in sorted(data) if k.startswith('test_'))
+    
+    # 6) Construir cada OBX
+    role = data.get('profession','')
+    resp = data.get('responsible','')
+    for idx, (tname, tval) in enumerate(tests, start=1):
+        code = tname
+        # si no hay responsible/profession, dejamos vacíos
+        suffix = f"^^{resp}^^^^{role}" if resp or role else ""
+        obx = f"OBX|{idx}||{code}||{tval}||||||F|||||||||{suffix}\r"
+        segments.append(obx)
+    
+    # 7) Diagnósticos: dx_ppal/​dx + dx2…dx5
+    # dx principal puede llamarse 'dx_ppal' o 'dx'
+    diagnosticos = []
+    if data.get('dx_ppal'):
+        diagnosticos.append((1, data['dx_ppal']))
+    elif data.get('dx'):
+        diagnosticos.append((1, data['dx']))
+    # luego los siguientes dx2..dx5
+    for i in range(2,6):
+        key = f"dx{i}"
+        if key in data:
+            diagnosticos.append((i, data[key]))
+    for num, desc in diagnosticos:
+        segments.append(f"DG1|{num}||DX{num:03d}|{desc}|\r")
+    
+    # 8) Comorbilidades
+    Comorbilidades = data.get('Comorbilidades') or []
+    for i, alg in enumerate(Comorbilidades, start=1):
+        segments.append(f"AL1|{i}|CM|{alg}|\r")
+
+    # 8) Unir todos los segmentos en un solo string
+    hl7_message = "".join(segments)
+    
+    # 9) Guardar en archivo data/<id>.txt (crea carpeta si no existe)
+    patient_id = data.get('id', 'unknown')
+    os.makedirs('data', exist_ok=True)
+    file_path = os.path.join('data', f'{patient_id}.txt')
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(hl7_message)
+
+
 # funcion para bucar e imprimir la informacion de un paciente           
 def search_patient(id_paciente):
     id_paciente = str(id_paciente)
     paciente = db.Patients.find_one({"id": id_paciente})
     if paciente:
+        hl7_file(paciente)
         print("******** Información del Paciente ********\n")
         for key, value in paciente.items():
             if key == "_id":
@@ -165,7 +246,7 @@ def update_patient(id_paciente):
                 # Si es lista, permitir actualizar elementos individuales
                 elif isinstance(valor_actual, list):
                     if not valor_actual:
-                        print(f"La lista '{atributo}' está vacía.")
+                        print(f"El campo '{atributo}' está vacío.")
                         continue
                     while True:
                         print(f"\nCampos de '{atributo}':")
@@ -205,7 +286,7 @@ def delete_patient(id_paciente):
     paciente = db.Patients.find_one({"id": id_paciente})
     if paciente:
         db.Patients.delete_one({"id": id_paciente})
-        print(f"Paciente con ID {id_paciente} eliminado correctamente.")
+        print(f"\nPaciente con ID {id_paciente} eliminado correctamente.")
         return True
     else:
         return False
