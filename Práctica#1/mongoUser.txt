@@ -1,2 +1,0 @@
-username: danielbarreram
-password: 987654321
